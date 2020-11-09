@@ -65,7 +65,7 @@ jobs:
           env: |
             CIBW_BUILD: cp36-* cp37-* cp38-*
             CIBW_TEST_EXTRAS: test
-            CIBW_TEST_COMMAND: pytest --pyargs casa_formats_io
+            CIBW_TEST_COMMAND: python3 -m pytest --pyargs casa_formats_io
 
           # Install some dependencies in the container. This speeds up builds if
           # you are also using githubToken. Any dependencies installed here will
@@ -80,8 +80,7 @@ jobs:
 
           # Produce a binary artifact and place it in the mounted volume
           run: |
-            python -m cibuildwheel --output-dir wheelhouse
-            echo "Produced artifact at /artifacts/${artifact_name}"
+            python3 -m cibuildwheel --output-dir wheelhouse
 
       - uses: actions/upload-artifact@v2
         with:
