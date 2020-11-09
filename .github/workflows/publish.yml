@@ -62,7 +62,7 @@ jobs:
           # The shell to run commands with in the container
           shell: /bin/sh
 
-          env:
+          env: |
             CIBW_BUILD: cp36-* cp37-* cp38-*
             CIBW_TEST_EXTRAS: test
             CIBW_TEST_COMMAND: pytest --pyargs casa_formats_io
