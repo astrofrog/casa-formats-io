@@ -62,6 +62,11 @@ jobs:
           # The shell to run commands with in the container
           shell: /bin/sh
 
+          env:
+            CIBW_BUILD: cp36-* cp37-* cp38-*
+            CIBW_TEST_EXTRAS: test
+            CIBW_TEST_COMMAND: pytest --pyargs casa_formats_io
+
           # Install some dependencies in the container. This speeds up builds if
           # you are also using githubToken. Any dependencies installed here will
           # be part of the container image that gets cached, so subsequent
