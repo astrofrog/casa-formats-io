@@ -142,3 +142,29 @@ def test_getdesc_floatarray():
     trc = desc['_keywords_']['masks']['mask0']['box']['trc']
     assert trc.dtype == np.float32
     assert_equal(trc, [512, 512, 1, 100])
+
+
+@pytest.mark.skipif('not CASATOOLS_INSTALLED')
+def test_logtable(tmp_path):
+
+    filename = str(tmp_path / 'test.image')
+    logtable = str(tmp_path / 'test.image' / 'logtable')
+
+    data = np.random.random((2, 3, 4))
+
+    ia = image()
+    ia.fromarray(outfile=filename, pixels=data, log=False)
+    ia.sethistory(origin='test', history=['a', 'bb', 'ccc'] * 200)
+    ia.close()
+
+    tb = table()
+    tb.open(logtable)
+    reference_getdesc = tb.getdesc()
+    reference_getdminfo = tb.getdminfo()
+    tb.close()
+
+    actual_getdesc = getdesc(logtable)
+    actual_getdminfo = getdminfo(logtable, endian='<')
+
+    assert pformat(actual_getdesc) == pformat(reference_getdesc)
+    assert pformat(actual_getdminfo) == pformat(reference_getdminfo)

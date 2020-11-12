@@ -17,13 +17,26 @@ TYPES = ['bool', 'char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float',
          'arraydcomplex', 'arraystr', 'record', 'other']
 
 
+class EndianAwareFileHandle:
+
+    def __init__(self, file_handle, endian):
+        self.file_handle = file_handle
+        self.endian = endian
+
+    def read(self, n):
+        return self.file_handle.read(n)
+
+    def tell(self):
+        return self.file_handle.tell()
+
+
 def with_nbytes_prefix(func):
     def wrapper(f, *args):
         start = f.tell()
         nbytes = int(read_int32(f))
         if nbytes == 0:
             return
-        b = BytesIO(f.read(nbytes - 4))
+        b = EndianAwareFileHandle(BytesIO(f.read(nbytes - 4)), f.endian)
         result = func(b, *args)
         end = f.tell()
         if end - start != nbytes:
@@ -38,19 +51,19 @@ def read_bool(f):
 
 
 def read_int32(f):
-    return np.int32(struct.unpack('>i', f.read(4))[0])
+    return np.int32(struct.unpack(f.endian + 'i', f.read(4))[0])
 
 
 def read_int64(f):
-    return np.int64(struct.unpack('>q', f.read(8))[0])
+    return np.int64(struct.unpack(f.endian + 'q', f.read(8))[0])
 
 
 def read_float32(f):
-    return np.float32(struct.unpack('>f', f.read(4))[0])
+    return np.float32(struct.unpack(f.endian + 'f', f.read(4))[0])
 
 
 def read_float64(f):
-    return np.float64(struct.unpack('>d', f.read(8))[0])
+    return np.float64(struct.unpack(f.endian + 'd', f.read(8))[0])
 
 
 def read_complex64(f):
@@ -277,7 +290,7 @@ def read_table_desc(f, nrow, image_path):
 
     unknown1 = read_int32(f)  # noqa
     unknown2 = read_int32(f)  # noqa
-    unknown3 = read_int32(f)  # noqa
+    unknown3 = read_string(f)  # noqa
 
     desc = {}
 
@@ -411,13 +424,15 @@ def read_tiled_cell_st_man(f):
     return {'*1': st_man}
 
 
-def getdminfo(filename):
+def getdminfo(filename, endian='>'):
     """
     Return the same output as CASA's getdminfo() function, namely a dictionary
     with metadata about the .image file, parsed from the ``table.f0`` file.
     """
 
-    with open(os.path.join(filename, 'table.f0'), 'rb') as f:
+    with open(os.path.join(filename, 'table.f0'), 'rb') as f_orig:
+
+        f = EndianAwareFileHandle(f_orig, endian)
 
         magic = f.read(4)
         if magic != b'\xbe\xbe\xbe\xbe':
