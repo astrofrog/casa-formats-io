@@ -83,20 +83,22 @@ def test_generic_table_read(tmp_path):
     filename_fits = str(tmp_path / 'generic.fits')
     filename_casa = str(tmp_path / 'generic.image')
 
+    N = 120
+
     t = Table()
-    t['short'] = np.arange(3, dtype=np.int16)
-    t['ushort'] = np.arange(3, dtype=np.uint16)
-    t['int'] = np.arange(3, dtype=np.int32)
-    t['uint'] = np.arange(3, dtype=np.uint32)
-    t['float'] = np.arange(3, dtype=np.float32)
-    t['double'] = np.arange(3, dtype=np.float64)
-    t['complex'] = np.array([1 + 2j, 3.3 + 8.2j, -1.2 - 4.2j], dtype=np.complex64)
-    t['dcomplex'] = np.array([3.33 + 4.22j, 3.3 + 8.2j, -1.2 - 4.2j], dtype=np.complex128)
-    t['str'] = np.array(['reading', 'casa', 'images'])
+    t['short'] = np.arange(N, dtype=np.int16)
+    t['ushort'] = np.arange(N, dtype=np.uint16)
+    t['int'] = np.arange(N, dtype=np.int32)
+    t['uint'] = np.arange(N, dtype=np.uint32)
+    t['float'] = np.arange(N, dtype=np.float32)
+    t['double'] = np.arange(N, dtype=np.float64)
+    t['complex'] = np.array([1 + 2j, 3.3 + 8.2j, -1.2 - 4.2j] * (N // 3), dtype=np.complex64)
+    t['dcomplex'] = np.array([3.33 + 4.22j, 3.3 + 8.2j, -1.2 - 4.2j] * (N // 3), dtype=np.complex128)
+    t['str'] = np.array(['reading', 'casa', 'images'] * (N // 3))
 
     # Repeat this at the end to make sure we correctly finished reading
     # the complex column metadata
-    t['int2'] = np.arange(3, dtype=np.int32)
+    t['int2'] = np.arange(N, dtype=np.int32)
 
     t.write(filename_fits)
 
@@ -128,7 +130,7 @@ def test_generic_table_read(tmp_path):
 
     # TODO: for now the following fails because we haven't implemented
     # non-tiled data I/O
-    # getdminfo(filename_casa)
+    getdminfo(filename_casa)
 
 
 def test_getdesc_floatarray():
@@ -154,7 +156,7 @@ def test_logtable(tmp_path):
 
     ia = image()
     ia.fromarray(outfile=filename, pixels=data, log=False)
-    ia.sethistory(origin='test', history=['a', 'bb', 'ccc'] * 200)
+    ia.sethistory(origin='test', history=['a', 'bb', 'ccccccccccc'] * 23)
     ia.close()
 
     tb = table()
@@ -163,7 +165,11 @@ def test_logtable(tmp_path):
     reference_getdminfo = tb.getdminfo()
     tb.close()
 
+    print(pformat(reference_getdesc))
+    print(pformat(reference_getdminfo))
+
     actual_getdesc = getdesc(logtable)
+    print(pformat(actual_getdesc))
     actual_getdminfo = getdminfo(logtable, endian='<')
 
     assert pformat(actual_getdesc) == pformat(reference_getdesc)

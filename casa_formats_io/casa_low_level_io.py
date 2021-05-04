@@ -29,6 +29,9 @@ class EndianAwareFileHandle:
     def tell(self):
         return self.file_handle.tell()
 
+    def seek(self, n):
+        return self.file_handle.seek(n)
+
 
 def with_nbytes_prefix(func):
     def wrapper(f, *args):
@@ -408,12 +411,19 @@ def read_tiled_st_man(f):
 
 
 @with_nbytes_prefix
-def read_tiled_cell_st_man(f):
+def read_dminfo(f):
 
     stype, sversion = read_type(f)
 
-    if stype != 'TiledCellStMan' or sversion != 1:
+    if stype == 'TiledCellStMan' and sversion == 1:
+        return read_tiled_cell_st_man(f)
+    elif stype == 'StandardStMan' and sversion == 3:
+        return read_standard_st_man(f)
+    else:
         raise NotImplementedError('Support for {0} version {1} not implemented'.format(stype, sversion))
+
+
+def read_tiled_cell_st_man(f):
 
     default_tile_shape = read_iposition(f)
 
@@ -423,6 +433,59 @@ def read_tiled_cell_st_man(f):
 
     return {'*1': st_man}
 
+
+def read_standard_st_man(f):
+
+    pos = f.tell()
+    print(repr(f.read(10000)))
+    f.seek(pos)
+
+    # SSMBase::readHeader()
+    # https://github.com/casacore/casacore/blob/d6da19830fa470bdd8434fd855abe79037fda78c/tables/DataMan/SSMBase.cc#L415
+
+    big_endian = f.read(1) == b'\x01'  # noqa
+
+    bucket_size = read_int32(f)
+    number_of_buckets = read_int32(f)
+    persistent_cache = read_int32(f)
+    number_of_free_buckets = read_int32(f)
+    first_free_bucket = read_int32(f)
+    number_of_bucket_for_index = read_int32(f)
+    first_index_bucket_number = read_int32(f)
+    idx_bucket_offset = read_int32(f)
+    last_string_bucket = read_int32(f)
+    index_length = read_int32(f)
+    number_indices = read_int32(f)
+
+    print(bucket_size)
+    print(number_of_buckets)
+    print(persistent_cache)
+    print(number_of_free_buckets)
+    print(first_free_bucket)
+    print(number_of_bucket_for_index)
+    print(first_index_bucket_number)
+    print(idx_bucket_offset)
+    print(last_string_bucket)
+    print(index_length)
+    print(number_indices)
+
+    # st_man = read_tiled_st_man(f)
+
+    st_man = {}
+    st_man['SPEC'] = {}
+    st_man['SPEC']['BUCKETSIZE'] = bucket_size
+    st_man['SPEC']['IndexLength'] = index_length
+    st_man['SPEC']['MaxCacheSize'] = persistent_cache  # NOTE: not sure if correct
+    st_man['SPEC']['PERSCACHESIZE'] = persistent_cache
+
+    print(st_man)
+
+    return {'*1': st_man}
+
+    # Bucket 0 contains SSMIndex:
+    # https://github.com/casacore/casacore/blob/d6da19830fa470bdd8434fd855abe79037fda78c/tables/DataMan/SSMIndex.cc#L55
+
+    # Then it contains another index at offset given by idx_bucket_offset
 
 def getdminfo(filename, endian='>'):
     """
@@ -438,16 +501,18 @@ def getdminfo(filename, endian='>'):
         if magic != b'\xbe\xbe\xbe\xbe':
             raise ValueError('Incorrect magic code: {0}'.format(magic))
 
-        return read_tiled_cell_st_man(f)
+        return read_dminfo(f)
 
 
-def getdesc(filename):
+def getdesc(filename, endian='>'):
     """
     Return the same output as CASA's getdesc() function, namely a dictionary
     with metadata about the .image file, parsed from the ``table.dat`` file.
     """
 
-    with open(os.path.join(filename, 'table.dat'), 'rb') as f:
+    with open(os.path.join(filename, 'table.dat'), 'rb') as f_orig:
+
+        f = EndianAwareFileHandle(f_orig, endian)
 
         magic = f.read(4)
         if magic != b'\xbe\xbe\xbe\xbe':
