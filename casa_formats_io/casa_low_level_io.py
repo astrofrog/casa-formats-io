@@ -23,7 +23,7 @@ class EndianAwareFileHandle:
         self.file_handle = file_handle
         self.endian = endian
 
-    def read(self, n):
+    def read(self, n=None):
         return self.file_handle.read(n)
 
     def tell(self):
@@ -37,11 +37,13 @@ def with_nbytes_prefix(func):
     def wrapper(f, *args):
         start = f.tell()
         nbytes = int(read_int32(f))
+        print('-> calling {0} with {1} bytes starting at {2}'.format(func, nbytes, start))
         if nbytes == 0:
             return
         b = EndianAwareFileHandle(BytesIO(f.read(nbytes - 4)), f.endian)
         result = func(b, *args)
         end = f.tell()
+        print('-> ended {0} at {1}'.format(func, end))
         if end - start != nbytes:
             raise IOError('Function {0} read {1} bytes instead of {2}'
                           .format(func, end - start, nbytes))
@@ -79,6 +81,7 @@ def read_complex128(f):
 
 def read_string(f):
     value = read_int32(f)
+    print('value', value)
     return f.read(int(value)).replace(b'\x00', b'').decode('ascii')
 
 
@@ -189,6 +192,8 @@ def read_table_record(f, image_path):
 
     records = read_record_desc(f)
 
+    print(records)
+
     unknown = read_int32(f)  # noqa
 
     for name, values in records.items():
@@ -234,6 +239,8 @@ def read_table_record(f, image_path):
 @with_nbytes_prefix
 def read_table(f, image_path):
 
+    # PlainTable::PlainTable (AipsIO&
+
     stype, sversion = read_type(f)
 
     if stype != 'Table' or sversion != 2:
@@ -247,7 +254,118 @@ def read_table(f, image_path):
 
     table_desc = read_table_desc(f, nrow, image_path)
 
+    # ColumnSet
+    # rownr_t ColumnSet::getFile (AipsIO& io
+    version = read_int32(f)  # can be negative
+    print('version', version)
+    # See full logic
+    version = -version
+
+    if version != 2:
+        raise NotImplementedError('Support for ColumnSet version {0} not implemented'.format(version))
+
+    nrow = read_int32(f)
+    print('nrow', nrow)
+    nrman = read_int32(f)
+    print('nrman', nrman)
+    nr = read_int32(f)
+    print('nr', nr)
+
+    # Construct data managers
+
+    for i in range(nr):
+
+        name = read_string(f)
+        seqnr = read_int32(f)
+        print(name, seqnr)
+
+        # What is colmap_p?
+        # getColumn(i)->getFile (ios, *this, TableAttr(tab));
+
+        for colindex in range(5):
+
+            colversion = read_int32(f)
+
+            if colversion < 2:
+                raise NotImplementedError('Support for PlainColumn version {0} not implemented'.format(colversion))
+
+            colname = read_string(f)
+
+            print('column', colversion, colname)
+
+            # ScalarRecordColumnData
+
+            scacolversion = read_int32(f)
+            scsacolseqnr = read_int32(f)
+
+            print('scacolumn', scacolversion, scsacolseqnr)
+
+    # Prepare data managers
+
+    data_managers = []
+
+    for i in range(nr):
+
+        data_managers.append(read_data_manager(f))
+
     return table_desc
+
+
+def read_data_manager(f):
+
+    f.read(4) # length but seems to be offset by 4 bytes so just read here instead of using decorator
+    magic = f.read(4)
+    if magic != b'\xbe\xbe\xbe\xbe':
+        raise ValueError('Incorrect magic code: {0}'.format(magic))
+
+    read_ssm(f)
+
+
+@with_nbytes_prefix
+def read_ssm(f):
+
+    stype, sversion = read_type(f)
+
+    if stype != 'SSM' or sversion != 2:
+        raise NotImplementedError('Support for {0} version {1} not implemented'.format(stype, sversion))
+
+    name = read_string(f)
+
+    print('ssm name:', name)
+
+    read_block(f, read_int32)  # itsColumnOffset
+    read_block(f, read_int32)  # itsColIndexMap
+
+
+
+def read_block(f, func):
+
+    nr = read_int32(f)
+
+    print('nr', nr)
+
+    name = read_string(f)
+    version = read_int32(f)
+
+    print(name, version)
+
+    size = read_int32(f)
+
+    print(size)
+
+    pos = f.tell()
+    print(repr(f.read()))
+    f.seek(pos)
+
+    elements = [func(f) for i in range(size)]
+
+    print(elements)
+
+
+    # There are still bytes here, including a list of column names, so need to figure out what is going on here.
+
+
+
 
 
 def read_column_desc(f, image_path):
@@ -261,25 +379,29 @@ def read_column_desc(f, image_path):
 
     desc = {}
     name = read_string(f)
+    print('NAME', name)
     desc['comment'] = read_string(f)
     desc['dataManagerType'] = read_string(f).replace('Shape', 'Cell')
     desc['dataManagerGroup'] = read_string(f)
+    if desc['dataManagerGroup'] == 'StandardStMan':
+        desc['dataManagerGroup'] = 'SSM'
     desc['valueType'] = TYPES[read_int32(f)]
-    desc['maxlen'] = read_int32(f)
+    desc['option'] = read_int32(f)
     ndim = read_int32(f)
     if ndim > 0:
         ipos = read_iposition(f)  # noqa
         desc['ndim'] = ndim
-    desc['option'] = read_int32(f)
+    desc['maxlen'] = read_int32(f)
     desc['keywords'] = read_table_record(f, image_path)
+    print('HERE')
     if desc['valueType'] in ('ushort', 'short'):
-        f.read(2)
+        print(repr(f.read(2)))
     if desc['valueType'] in ('uint', 'int', 'float', 'string'):
-        f.read(4)
+        print(repr(f.read(4)))
     elif desc['valueType'] in ('double', 'complex'):
-        f.read(8)
+        print(repr(f.read(8)))
     elif desc['valueType'] in ('dcomplex'):
-        f.read(16)
+        print(repr(f.read(16)))
     return {name: desc}
 
 
@@ -317,6 +439,8 @@ def read_table_desc(f, nrow, image_path):
             read_int32(f)
         array_column_desc = read_column_desc(f, image_path)
         desc.update(array_column_desc)
+
+    print('loeftover', f.tell(), repr(f.read()))
 
     return desc
 
@@ -436,9 +560,9 @@ def read_tiled_cell_st_man(f):
 
 def read_standard_st_man(f):
 
-    pos = f.tell()
-    print(repr(f.read(10000)))
-    f.seek(pos)
+    # pos = f.tell()
+    # print(repr(f.read(10000)))
+    # f.seek(pos)
 
     # SSMBase::readHeader()
     # https://github.com/casacore/casacore/blob/d6da19830fa470bdd8434fd855abe79037fda78c/tables/DataMan/SSMBase.cc#L415
@@ -478,6 +602,10 @@ def read_standard_st_man(f):
     st_man['SPEC']['MaxCacheSize'] = persistent_cache  # NOTE: not sure if correct
     st_man['SPEC']['PERSCACHESIZE'] = persistent_cache
 
+    st_man['TYPE'] = 'StandardStMan'
+    st_man['NAME'] = 'SSM'
+    st_man['SEQNR'] = 0
+
     print(st_man)
 
     return {'*1': st_man}
@@ -501,7 +629,22 @@ def getdminfo(filename, endian='>'):
         if magic != b'\xbe\xbe\xbe\xbe':
             raise ValueError('Incorrect magic code: {0}'.format(magic))
 
-        return read_dminfo(f)
+        dminfo = read_dminfo(f)
+
+    print(dminfo['*1']['TYPE'])
+
+    # if dminfo['*1']['TYPE'] == 'StandardStMan':
+    #     desc = getdesc(filename)
+    #     print(desc)
+    #     dminfo['*1']['COLUMNS'] = []
+    #     for key in desc:
+    #         print(key)
+    #         if 'dataManagerGroup' in desc[key]:
+    #             dminfo['*1']['COLUMNS'].append(key)
+
+    #     dminfo['*1']['COLUMNS'] = np.array(sorted(dminfo['*1']['COLUMNS']), dtype='<U16')
+
+    return dminfo
 
 
 def getdesc(filename, endian='>'):
@@ -509,6 +652,8 @@ def getdesc(filename, endian='>'):
     Return the same output as CASA's getdesc() function, namely a dictionary
     with metadata about the .image file, parsed from the ``table.dat`` file.
     """
+
+    print(filename)
 
     with open(os.path.join(filename, 'table.dat'), 'rb') as f_orig:
 
@@ -518,4 +663,7 @@ def getdesc(filename, endian='>'):
         if magic != b'\xbe\xbe\xbe\xbe':
             raise ValueError('Incorrect magic code: {0}'.format(magic))
 
-        return read_table(f, filename)
+        result = read_table(f, filename)
+        print(f.tell())
+        print(repr(f.read()))
+        return result

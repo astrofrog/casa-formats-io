@@ -165,12 +165,22 @@ def test_logtable(tmp_path):
     reference_getdminfo = tb.getdminfo()
     tb.close()
 
-    print(pformat(reference_getdesc))
-    print(pformat(reference_getdminfo))
-
     actual_getdesc = getdesc(logtable)
-    print(pformat(actual_getdesc))
     actual_getdminfo = getdminfo(logtable, endian='<')
 
-    assert pformat(actual_getdesc) == pformat(reference_getdesc)
+    # with open('referencedesc', 'w') as f:
+    #     f.write(pformat(reference_getdesc))
+
+    # with open('actualdesc', 'w') as f:
+    #     f.write(pformat(actual_getdesc))
+
+    # with open('reference', 'w') as f:
+    #     f.write(pformat(reference_getdminfo))
+
+    # with open('actual', 'w') as f:
+    #     f.write(pformat(actual_getdminfo))
+
+    # print(pformat(actual_getdesc))
+
+    # assert pformat(actual_getdesc) == pformat(reference_getdesc)
     assert pformat(actual_getdminfo) == pformat(reference_getdminfo)
