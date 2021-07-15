@@ -5,6 +5,7 @@ import os
 import struct
 from io import BytesIO
 from collections import OrderedDict
+from textwrap import indent
 
 import numpy as np
 
@@ -17,11 +18,18 @@ TYPES = ['bool', 'char', 'uchar', 'short', 'ushort', 'int', 'uint', 'float',
          'arraydcomplex', 'arraystr', 'record', 'other']
 
 
+class AutoRepr:
+    def __repr__(self):
+        from pprint import pformat
+        return f'{self.__class__.__name__}' + pformat(self.__dict__)
+
+
 class EndianAwareFileHandle:
 
-    def __init__(self, file_handle, endian):
+    def __init__(self, file_handle, endian, original_filename):
         self.file_handle = file_handle
         self.endian = endian
+        self.original_filename = original_filename
 
     def read(self, n=None):
         return self.file_handle.read(n)
@@ -34,14 +42,25 @@ class EndianAwareFileHandle:
 
 
 def with_nbytes_prefix(func):
-    def wrapper(f, *args):
+    def wrapper(*args):
+        if hasattr(args[0], 'tell'):
+            self = None
+            f = args[0]
+            args = args[1:]
+        else:
+            self = args[0]
+            f = args[1]
+            args = args[2:]
         start = f.tell()
         nbytes = int(read_int32(f))
         print('-> calling {0} with {1} bytes starting at {2}'.format(func, nbytes, start))
         if nbytes == 0:
             return
-        b = EndianAwareFileHandle(BytesIO(f.read(nbytes - 4)), f.endian)
-        result = func(b, *args)
+        b = EndianAwareFileHandle(BytesIO(f.read(nbytes - 4)), f.endian, f.original_filename)
+        if self:
+            result = func(self, b, *args)
+        else:
+            result = func(b, *args)
         end = f.tell()
         print('-> ended {0} at {1}'.format(func, end))
         if end - start != nbytes:
@@ -183,7 +202,7 @@ def read_record_desc(f):
 
 
 @with_nbytes_prefix
-def read_table_record(f, image_path):
+def read_table_record(f):
 
     stype, sversion = read_type(f)
 
@@ -215,7 +234,7 @@ def read_table_record(f, image_path):
         elif rectype == 'string':
             records[name] = read_string(f)
         elif rectype == 'table':
-            records[name] = 'Table: ' + os.path.abspath(os.path.join(image_path, read_string(f)))
+            records[name] = 'Table: ' + os.path.abspath(os.path.join(f.original_filename, read_string(f)))
         elif rectype == 'arrayint':
             records[name] = read_array(f, 'int')
         elif rectype == 'arrayfloat':
@@ -229,146 +248,200 @@ def read_table_record(f, image_path):
         elif rectype == 'arraystr':
             records[name] = read_array(f, 'string')
         elif rectype == 'record':
-            records[name] = read_table_record(f, image_path)
+            records[name] = read_table_record(f)
         else:
             raise NotImplementedError("Support for type {0} in TableRecord not implemented".format(rectype))
 
     return dict(records)
 
 
-@with_nbytes_prefix
-def read_table(f, image_path):
-
-    # PlainTable::PlainTable (AipsIO&
-
+def check_type_and_version(f, name, versions):
+    if np.isscalar(versions):
+        versions = [versions]
     stype, sversion = read_type(f)
-
-    if stype != 'Table' or sversion != 2:
+    if stype != name or sversion not in versions:
         raise NotImplementedError('Support for {0} version {1} not implemented'.format(stype, sversion))
+    return sversion
 
-    nrow = read_int32(f)
-    fmt = read_int32(f)  # noqa
-    name = read_string(f)  # noqa
 
-    big_endian = fmt == 0  # noqa
+class Table(AutoRepr):
 
-    table_desc = read_table_desc(f, nrow, image_path)
+    @classmethod
+    @with_nbytes_prefix
+    def read(cls, f):
 
-    # ColumnSet
-    # rownr_t ColumnSet::getFile (AipsIO& io
-    version = read_int32(f)  # can be negative
-    print('version', version)
-    # See full logic
-    version = -version
+        self = cls()
 
-    if version != 2:
-        raise NotImplementedError('Support for ColumnSet version {0} not implemented'.format(version))
+        version = check_type_and_version(f, 'Table', 2)
 
-    nrow = read_int32(f)
-    print('nrow', nrow)
-    nrman = read_int32(f)
-    print('nrman', nrman)
-    nr = read_int32(f)
-    print('nr', nr)
+        self.nrow = read_int32(f)
+        self.fmt = read_int32(f)  # noqa
+        self.name = read_string(f)  # noqa
 
-    # Construct data managers
+        # big_endian = fmt == 0  # noqa
 
-    for i in range(nr):
+        self.description = TableDesc.read(f, self.nrow)
+
+        self.column_set = ColumnSet.read(f, ncol=self.description.ncol)
+
+        return self
+
+
+class TableDesc(AutoRepr):
+
+    @classmethod
+    @with_nbytes_prefix
+    def read(cls, f, nrow):
+
+        self = cls()
+
+        check_type_and_version(f, 'TableDesc', 2)
+
+        unknown1 = read_int32(f)  # noqa
+        unknown2 = read_int32(f)  # noqa
+        unknown3 = read_string(f)  # noqa
+
+        self.keywords = read_table_record(f)
+        self.private_keywords = read_table_record(f)
+
+        self.ncol = read_int32(f)
+
+        self.column_description = []
+
+        for icol in range(self.ncol):
+            if icol > 0:
+                read_int32(f)
+            self.column_description.append(read_column_desc(f))
+
+        return self
+
+    # def as_casa_dict(self):
+
+    #             desc['_keywords_'] = read_table_record(f)
+    #     desc['_define_hypercolumn_'] = {}
+
+    #     hypercolumn = read_table_record(f)
+    #     desc['_private_keywords_'] = hypercolumn
+    #     if hypercolumn:
+    #         name = list(hypercolumn)[0].split('_')[1]
+    #         value = list(hypercolumn.values())[0]
+    #         desc['_define_hypercolumn_'][name] = {'HCcoordnames': value['coord'],
+    #                                             'HCdatanames': value['data'],
+    #                                             'HCidnames': value['id'],
+    #                                             'HCndim': value['ndim']}
+
+    #     ncol = read_int32(f)
+
+
+class StandardStMan(AutoRepr):
+
+    @classmethod
+    @with_nbytes_prefix
+    def read(cls, f):
+        self = cls()
+        check_type_and_version(f, 'SSM', 2)
+        self.name = read_string(f)
+        self.column_offset = Block.read(f, read_int32)
+        self.column_index_map = Block.read(f, read_int32)
+        return self
+
+class Block(AutoRepr):
+
+    @classmethod
+    def read(cls, f, func):
+        self = cls()
+        self.nr = read_int32(f)
+        self.name = read_string(f)
+        self.version = read_int32(f)
+        self.size = read_int32(f)
+        self.elements = [func(f) for i in range(self.size)]
+        return self
+
+
+class ColumnSet(AutoRepr):
+
+    @classmethod
+    def read(cls, f, ncol):
+
+        self = cls()
+
+        version = read_int32(f)  # can be negative
+        # See full logic in ColumnSet.getFile
+        version = -version
+
+        if version != 2:
+            raise NotImplementedError('Support for ColumnSet version {0} not implemented'.format(version))
+
+        self.nrow = read_int32(f)
+        self.nrman = read_int32(f)
+        self.nr = read_int32(f)
+
+        # Construct data managers
+
+        data_manager_cls = []
+
+        for i in range(self.nr):
+
+            name = read_string(f)
+            seqnr = read_int32(f)
+            print(name, seqnr)
+
+            if name == 'StandardStMan':
+                dm_cls = StandardStMan
+            else:
+                raise NotImplementedError('Data manager {0} not supported'.format(name))
+
+            data_manager_cls.append(dm_cls)
+
+        self.columns = [PlainColumn.read(f) for index in range(ncol)]
+
+        # Prepare data managers
+
+        f.read(8)  # includes a length in bytes and bebebebe, need to check how this behaves when multiple DMs are present
+
+        self.data_managers = []
+
+        for i in range(self.nr):
+
+            self.data_managers.append(data_manager_cls[i].read(f))
+
+        return self
+
+
+class PlainColumn(AutoRepr):
+
+    @classmethod
+    def read(cls, f):
+
+        self = cls()
+
+        version = read_int32(f)
+
+        if version < 2:
+            raise NotImplementedError('Support for PlainColumn version {0} not implemented'.format(version))
 
         name = read_string(f)
-        seqnr = read_int32(f)
-        print(name, seqnr)
 
-        # What is colmap_p?
-        # getColumn(i)->getFile (ios, *this, TableAttr(tab));
+        self.data = ScalarColumnData.read(f)
 
-        for colindex in range(5):
-
-            colversion = read_int32(f)
-
-            if colversion < 2:
-                raise NotImplementedError('Support for PlainColumn version {0} not implemented'.format(colversion))
-
-            colname = read_string(f)
-
-            print('column', colversion, colname)
-
-            # ScalarRecordColumnData
-
-            scacolversion = read_int32(f)
-            scsacolseqnr = read_int32(f)
-
-            print('scacolumn', scacolversion, scsacolseqnr)
-
-    # Prepare data managers
-
-    data_managers = []
-
-    for i in range(nr):
-
-        data_managers.append(read_data_manager(f))
-
-    return table_desc
+        return self
 
 
-def read_data_manager(f):
+class ScalarColumnData(AutoRepr):
 
-    f.read(4) # length but seems to be offset by 4 bytes so just read here instead of using decorator
-    magic = f.read(4)
-    if magic != b'\xbe\xbe\xbe\xbe':
-        raise ValueError('Incorrect magic code: {0}'.format(magic))
+    @classmethod
+    def read(cls, f):
 
-    read_ssm(f)
+        self = cls()
 
+        version = read_int32(f)
+        self.seqnr = read_int32(f)
 
-@with_nbytes_prefix
-def read_ssm(f):
-
-    stype, sversion = read_type(f)
-
-    if stype != 'SSM' or sversion != 2:
-        raise NotImplementedError('Support for {0} version {1} not implemented'.format(stype, sversion))
-
-    name = read_string(f)
-
-    print('ssm name:', name)
-
-    read_block(f, read_int32)  # itsColumnOffset
-    read_block(f, read_int32)  # itsColIndexMap
+        return self
 
 
 
-def read_block(f, func):
-
-    nr = read_int32(f)
-
-    print('nr', nr)
-
-    name = read_string(f)
-    version = read_int32(f)
-
-    print(name, version)
-
-    size = read_int32(f)
-
-    print(size)
-
-    pos = f.tell()
-    print(repr(f.read()))
-    f.seek(pos)
-
-    elements = [func(f) for i in range(size)]
-
-    print(elements)
-
-
-    # There are still bytes here, including a list of column names, so need to figure out what is going on here.
-
-
-
-
-
-def read_column_desc(f, image_path):
+def read_column_desc(f):
 
     unknown = read_int32(f)  # noqa
 
@@ -392,7 +465,7 @@ def read_column_desc(f, image_path):
         ipos = read_iposition(f)  # noqa
         desc['ndim'] = ndim
     desc['maxlen'] = read_int32(f)
-    desc['keywords'] = read_table_record(f, image_path)
+    desc['keywords'] = read_table_record(f)
     print('HERE')
     if desc['valueType'] in ('ushort', 'short'):
         print(repr(f.read(2)))
@@ -403,46 +476,6 @@ def read_column_desc(f, image_path):
     elif desc['valueType'] in ('dcomplex'):
         print(repr(f.read(16)))
     return {name: desc}
-
-
-@with_nbytes_prefix
-def read_table_desc(f, nrow, image_path):
-
-    stype, sversion = read_type(f)
-
-    if stype != 'TableDesc' or sversion != 2:
-        raise NotImplementedError('Support for {0} version {1} not implemented'.format(stype, sversion))
-
-    unknown1 = read_int32(f)  # noqa
-    unknown2 = read_int32(f)  # noqa
-    unknown3 = read_string(f)  # noqa
-
-    desc = {}
-
-    desc['_keywords_'] = read_table_record(f, image_path)
-    desc['_define_hypercolumn_'] = {}
-
-    hypercolumn = read_table_record(f, image_path)
-    desc['_private_keywords_'] = hypercolumn
-    if hypercolumn:
-        name = list(hypercolumn)[0].split('_')[1]
-        value = list(hypercolumn.values())[0]
-        desc['_define_hypercolumn_'][name] = {'HCcoordnames': value['coord'],
-                                              'HCdatanames': value['data'],
-                                              'HCidnames': value['id'],
-                                              'HCndim': value['ndim']}
-
-    ncol = read_int32(f)
-
-    for icol in range(ncol):
-        if icol > 0:
-            read_int32(f)
-        array_column_desc = read_column_desc(f, image_path)
-        desc.update(array_column_desc)
-
-    print('loeftover', f.tell(), repr(f.read()))
-
-    return desc
 
 
 @with_nbytes_prefix
@@ -623,7 +656,7 @@ def getdminfo(filename, endian='>'):
 
     with open(os.path.join(filename, 'table.f0'), 'rb') as f_orig:
 
-        f = EndianAwareFileHandle(f_orig, endian)
+        f = EndianAwareFileHandle(f_orig, endian, filename)
 
         magic = f.read(4)
         if magic != b'\xbe\xbe\xbe\xbe':
@@ -657,13 +690,14 @@ def getdesc(filename, endian='>'):
 
     with open(os.path.join(filename, 'table.dat'), 'rb') as f_orig:
 
-        f = EndianAwareFileHandle(f_orig, endian)
+        f = EndianAwareFileHandle(f_orig, endian, filename)
 
         magic = f.read(4)
         if magic != b'\xbe\xbe\xbe\xbe':
             raise ValueError('Incorrect magic code: {0}'.format(magic))
 
-        result = read_table(f, filename)
-        print(f.tell())
-        print(repr(f.read()))
+        result = Table.read(f)
         return result
+
+
+# New OO interface which will give more flexibility

@@ -166,7 +166,16 @@ def test_logtable(tmp_path):
     tb.close()
 
     actual_getdesc = getdesc(logtable)
-    actual_getdminfo = getdminfo(logtable, endian='<')
+
+    t = actual_getdesc
+    print(t)
+    print(t.description)
+    print(t.description.keywords)
+    print(t.description.private_keywords)
+    print(t.column_set.data_managers)
+    print(t.column_set.data_managers[0].column_offset.elements)
+
+    # actual_getdminfo = getdminfo(logtable, endian='<')
 
     # with open('referencedesc', 'w') as f:
     #     f.write(pformat(reference_getdesc))
