@@ -4,6 +4,8 @@
 - Fixed ``read_int32`` to return a native Python int rather than a numpy
   scalar. [#66]
 
+- Reduce default target_chunksize to 1000000. [#11]
+
 0.3.0 (2024-04-17)
 ------------------
 
@@ -27,8 +29,6 @@
 
 0.2 (2022-09-23)
 ----------------
-
-- Reduce default target_chunksize to 1000000. [#11]
 
 - Fix bug that occurred when target_chunksize was smaller than the native
   CASA chunk size. [#10]
