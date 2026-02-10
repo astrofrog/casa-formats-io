@@ -2,26 +2,46 @@ name: Run tests
 
 on:
   push:
+    branches:
+    - main
+    tags:
+    - '*'
   pull_request:
+  schedule:
+    # run every Tuesday at 5am UTC
+    - cron: '0 5 * * 2'
+  workflow_dispatch:
 
 jobs:
   tests:
-    uses: OpenAstronomy/github-actions-workflows/.github/workflows/tox.yml@v1
+    uses: OpenAstronomy/github-actions-workflows/.github/workflows/tox.yml@v2
     with:
       envs: |
+        - linux: build_docs
+
         - linux: py39-test-oldestdeps
         - linux: py310-test-casa
+        - linux: py312-test-casa
+        - linux: py313-test-casa
         - linux: py311-test
+        - linux: py312-test
+        - linux: py313-test
         - linux: py312-test-devdeps
 
         - macos: py39-test
         - macos: py310-test-casa
+        - macos: py312-test-casa
+        - macos: py313-test-casa
         - macos: py311-test
+        - macos: py312-test
+        - macos: py313-test
         - macos: py312-test-devdeps
 
         - windows: py39-test
         - windows: py310-test
         - windows: py311-test
+        - windows: py312-test
+        - windows: py313-test
         - windows: py312-test-devdeps
 
         # NOTE: the tests below are disabled for now until tox-conda is compatible with tox 4
