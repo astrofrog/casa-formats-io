@@ -115,7 +115,7 @@ def read_int16(f):
 
 
 def read_int32(f):
-    return np.int32(struct.unpack(f.endian + 'i', f.read(4))[0])
+    return np.int32(struct.unpack(f.endian + 'i', f.read(4))[0]).item()
 
 
 def bytes_to_int32(bytes, endian):
