@@ -6,6 +6,9 @@ jobs:
   publish:
     uses: OpenAstronomy/github-actions-workflows/.github/workflows/publish.yml@v1
     with:
+      env: |
+        CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+        CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
       test_extras: test
       test_command: pytest --pyargs casa_formats_io
       targets: |
