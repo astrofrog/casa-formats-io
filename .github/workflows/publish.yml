@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   publish:
-    uses: OpenAstronomy/github-actions-workflows/.github/workflows/publish.yml@v1
+    uses: OpenAstronomy/github-actions-workflows/.github/workflows/publish.yml@v3
     with:
       env: |
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
