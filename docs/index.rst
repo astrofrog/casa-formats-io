@@ -12,7 +12,7 @@ this package is to provide:
 
 * Efficient data access via `dask <https://dask.org/>`_ arrays
 * Cross-platform data access, supporting Linux, MacOS X and Windows
-* Data access with all supported Python versions
+* Data access with all supported Python versions (>=3.9)
 
 Reading .image datasets and CASA tables (including measurement sets) is
 supported. Writing data of any kind is not yet supported.

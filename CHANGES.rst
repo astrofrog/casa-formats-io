@@ -1,5 +1,5 @@
-Unreleased
-----------
+0.3.1 (unreleased)
+------------------
 
 - Fixed ``read_int32`` to return a native Python int rather than a numpy
   scalar. [#66]
