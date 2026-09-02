@@ -71,3 +71,9 @@ Reference/API
 .. automodapi:: casa_formats_io
    :no-inheritance-diagram:
    :inherited-members:
+
+radio-astro-tools
+-----------------
+
+This package is part of the radio-astro-tools project. See
+`radio-astro-tools <https://radio-astro-tools.github.io/>`_ for more information.
