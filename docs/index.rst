@@ -5,17 +5,17 @@ Scope
 -----
 
 The **casa-formats-io** package is a small package which implements
-functionality to read data stored in CASA formats (such as .image datasets).
-This implementation is independent of and does not use `casacore
-<https://casacore.github.io/casacore/>`_. The motivation for this package is
-to provide:
+functionality to read data stored in CASA formats (such as .image datasets
+and measurement sets). This implementation is independent of and does not
+use `casacore <https://casacore.github.io/casacore/>`_. The motivation for
+this package is to provide:
 
 * Efficient data access via `dask <https://dask.org/>`_ arrays
 * Cross-platform data access, supporting Linux, MacOS X and Windows
-* Data access with all modern Python versions, from 3.6 to the latest Python version
+* Data access with all supported Python versions (>=3.9)
 
-At this time (November 2020), only reading .image datasets is supported. Reading measurement sets
-(.ms) or writing data of any kind are not yet supported.
+Reading .image datasets and CASA tables (including measurement sets) is
+supported. Writing data of any kind is not yet supported.
 
 casa-formats-io supports python versions >=3.9.
 
@@ -71,3 +71,9 @@ Reference/API
 .. automodapi:: casa_formats_io
    :no-inheritance-diagram:
    :inherited-members:
+
+radio-astro-tools
+-----------------
+
+This package is part of the radio-astro-tools project. See
+`radio-astro-tools <https://radio-astro-tools.github.io/>`_ for more information.
