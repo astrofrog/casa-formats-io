@@ -14,16 +14,16 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
+from datetime import datetime
+from importlib import metadata
+
+release = metadata.version('casa-formats-io')
 
 # -- Project information -----------------------------------------------------
 
 project = 'casa-formats-io'
-copyright = '2020, Thomas Robitaille, Adam Ginsburg, and Eric Koch'
+copyright = f'2020-{datetime.now().year}, Thomas Robitaille, Adam Ginsburg, and Eric Koch'
 author = 'Thomas Robitaille, Adam Ginsburg, and Eric Koch'
-
-# The full version, including alpha/beta/rc tags
-release = '0.0'
-
 
 # -- General configuration ---------------------------------------------------
 
